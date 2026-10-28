@@ -197,6 +197,7 @@ static enum mgmt_cb_return mcumgr_dfu_cb(uint32_t event, enum mgmt_cb_return pre
 {
     if (event == MGMT_EVT_OP_IMG_MGMT_DFU_STARTED) {
         LOG_INF("OTA started");
+	button_ota_begin();
         k_mutex_lock(&ota_mutex, K_FOREVER);
         g_ota_total_size = 0;
         g_ota_chunk_count = 0;
@@ -215,6 +216,7 @@ static enum mgmt_cb_return mcumgr_dfu_cb(uint32_t event, enum mgmt_cb_return pre
             /* Detect OTA resume: first chunk with offset > 0 means resuming */
             if (!atomic_get(&ota_in_progress) && check->req && check->req->off > 0) {
                 LOG_INF("OTA resumed at offset %zu", (size_t)check->req->off);
+                button_ota_begin();
                 atomic_set(&ota_in_progress, 1);
                 k_work_schedule(&ota_progress_work, K_MSEC(OTA_PROGRESS_POLL_INTERVAL_MS));
                 clip_post_event(CLIP_EVENT_OTA_START);
@@ -274,6 +276,7 @@ static enum mgmt_cb_return mcumgr_dfu_cb(uint32_t event, enum mgmt_cb_return pre
         g_ota_chunk_count = 0;
         k_mutex_unlock(&ota_mutex);
         atomic_clear(&ota_in_progress);
+        button_ota_end();
         /* Cancel the progress work */
         k_work_cancel_delayable(&ota_progress_work);
         display_set_ota_progress(100);
@@ -284,6 +287,7 @@ static enum mgmt_cb_return mcumgr_dfu_cb(uint32_t event, enum mgmt_cb_return pre
         g_ota_chunk_count = 0;
         k_mutex_unlock(&ota_mutex);
         atomic_clear(&ota_in_progress);
+        button_ota_end();
         k_work_cancel_delayable(&ota_progress_work);
         clip_post_event(CLIP_EVENT_OTA_DONE);
     }
@@ -296,6 +300,7 @@ void clip_event_ota_cancel(void)
     if (ota_in_progress) {
         LOG_INF("OTA cancelled (BLE disconnect)");
         atomic_clear(&ota_in_progress);
+        button_ota_end();
         k_work_cancel_delayable(&ota_progress_work);
         clip_post_event(CLIP_EVENT_OTA_DONE);
     }
@@ -839,12 +844,14 @@ static enum clip_event_result execute_transition(enum clip_event event,
 
     case CLIP_EVENT_OTA_START:
     {
+	button_ota_begin();
         display_post_event(UI_EVENT_OTA_START);
         return CLIP_EVENT_OK;
     }
 
     case CLIP_EVENT_OTA_DONE:
     {
+	button_ota_end();
         display_post_event(UI_EVENT_OTA_DONE);
         return CLIP_EVENT_OK;
     }

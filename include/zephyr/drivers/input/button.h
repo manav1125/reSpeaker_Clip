@@ -21,4 +21,8 @@ int button_callback_register(const struct device *dev, button_event_cb_t cb);
 /* set a button event */
 int button_event_callback_register(const struct device *dev, button_event_cb_t cb, enum button_action action);
 
+/* Cancel only the gesture currently held on this device. A future press is
+ * unaffected when the button is up at the time of the call. */
+int button_cancel_current_gesture(const struct device *dev);
+
 #endif

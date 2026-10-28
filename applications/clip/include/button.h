@@ -44,6 +44,12 @@ void button_shutdown_lockout(void);
  */
 void button_shutdown_unlock(void);
 
+/** Block button actions for OTA and cancel any gesture already held. */
+void button_ota_begin(void);
+
+/** Re-enable button actions after OTA ends. A canceled held gesture stays canceled until release. */
+void button_ota_end(void);
+
 /**
  * @brief Register button event callback
  *

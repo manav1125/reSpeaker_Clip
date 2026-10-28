@@ -31,6 +31,7 @@
 #include "wifi.h"
 #include "display.h"
 #include "haptic.h"
+#include "button.h"
 #include "usb_cdc.h"
 
 LOG_MODULE_REGISTER(at_commands, CONFIG_CLIP_LOG_LEVEL);
@@ -733,6 +734,7 @@ static int cmd_dfu_handler(struct at_cmd_ctx *ctx, char *response, size_t len)
         return create_json_response(false, "Failed to set boot mode", NULL, response, len);
     }
 
+    button_ota_begin();
     clip_post_event(CLIP_EVENT_OTA_START);
 
     ret = create_json_response(true, NULL, "{\"dfu\":\"rebooting\"}", response, len);

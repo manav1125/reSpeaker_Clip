@@ -17,7 +17,9 @@
 		gpios = <&gpio1 15 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
 		label = "USR";
 		debounce-ms = <30>;
-		long-press-ms = <1000 3000>;
+		/* Cue controls: record on release at 1s, privacy pause/resume at 3s,
+		 * and deliberate power-off at 5s. */
+		long-press-ms = <1000 3000 5000>;
 		double-click-ms = <200>;
 		status = "okay";
 	};

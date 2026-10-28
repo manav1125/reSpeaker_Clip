@@ -77,15 +77,7 @@ LOG_MODULE_REGISTER(display, CONFIG_CLIP_LOG_LEVEL);
 #define DOT_CIRCLE_ANIM_FRAMES    8
 
 /* Mark Animation */
-#define MARK_ANIM_FRAMES          10
-#define MARK_WHITE_CIRCLE_MAX_RADIUS   6
-#define MARK_WHITE_CIRCLE_STABLE_RADIUS 4
-#define MARK_BLACK_CIRCLE_MAX_RADIUS   4
-#define MARK_BLACK_CIRCLE_STABLE_RADIUS 3
-#define MARK_LINE_THICKNESS           2
-#define MARK_LINE_STABLE_LENGTH       12
-#define MARK_LINE_MAX_LENGTH          14
-#define MARK_LINE_OFFSET_FROM_WHITE   2
+#define MARK_ANIM_FRAMES          8
 
 /* =============================================================================
  * Recording Animation Types
@@ -206,13 +198,6 @@ static inline void set_pixel_direct(uint8_t *buf, int x, int y)
 	buf[(y / 8) * OLED_WIDTH + x] |= (1 << (y % 8));
 }
 
-static inline void clear_pixel_direct(uint8_t *buf, int x, int y)
-{
-	if (x < 0 || x >= OLED_WIDTH || y < 0 || y >= OLED_HEIGHT)
-		return;
-	buf[(y / 8) * OLED_WIDTH + x] &= ~(1 << (y % 8));
-}
-
 static void clear_screen(uint8_t *buf)
 {
 	memset(buf, 0, OLED_BUF_SIZE);
@@ -326,10 +311,20 @@ static void draw_fast_animation(uint8_t *buf)
 	}
 }
 
+static void draw_recording_status(uint8_t *buf)
+{
+	draw_string_6x12(buf, "REC", 2, 1);
+	char battery_text[8];
+	snprintk(battery_text, sizeof(battery_text), "%u%%", g_status.battery_percent);
+	draw_string_6x12(buf, battery_text,
+			 OLED_WIDTH - ((int)strlen(battery_text) * 6) - 2, 1);
+}
+
 static void render_recording_wave(uint8_t *buf)
 {
 	clear_screen(buf);
 	draw_fast_animation(buf);
+	draw_recording_status(buf);
 }
 
 /* =============================================================================
@@ -376,100 +371,39 @@ static void render_dot_circle(uint8_t *buf, int frame)
 		(int)((DOT_CIRCLE_MAX_RADIUS - DOT_CIRCLE_STABLE_RADIUS) * sine_val);
 
 	draw_circle_mark(buf, current_radius, 1.0f);
+	draw_recording_status(buf);
 }
 
 /* =============================================================================
  * Mark Animation
  * ============================================================================= */
 
-static void draw_black_circle(uint8_t *buf, int radius, float scale)
-{
-	const int x_mid = OLED_WIDTH / 2;
-	const int y_mid = OLED_HEIGHT / 2;
-
-	int scaled_radius = (int)(radius * scale);
-	if (scaled_radius < 0) scaled_radius = 0;
-
-	for (int dy = -scaled_radius; dy <= scaled_radius; dy++) {
-		for (int dx = -scaled_radius; dx <= scaled_radius; dx++) {
-			int x = x_mid + dx;
-			int y = y_mid + dy;
-
-			if (x < 0 || x >= OLED_WIDTH || y < 0 || y >= OLED_HEIGHT) {
-				continue;
-			}
-
-			int dist_sq = dx * dx + dy * dy;
-			int radius_sq = scaled_radius * scaled_radius;
-
-			if (dist_sq <= radius_sq) {
-				clear_pixel_direct(buf, x, y);
-			}
-		}
-	}
-}
-
-static void draw_vertical_lines(uint8_t *buf, int white_circle_radius,
-				int line_length, int thickness, int offset_pixels)
-{
-	const int x_mid = OLED_WIDTH / 2;
-	const int y_mid = OLED_HEIGHT / 2;
-
-	int top_start_y = y_mid - white_circle_radius - offset_pixels;
-	int bottom_start_y = y_mid + white_circle_radius + offset_pixels;
-
-	for (int i = 0; i < line_length; i++) {
-		for (int t = 0; t < thickness; t++) {
-			int x = x_mid - (thickness / 2) + t;
-			int y = top_start_y - i;
-			if (x >= 0 && x < OLED_WIDTH && y >= 0 && y < OLED_HEIGHT) {
-				set_pixel_direct(buf, x, y);
-			}
-		}
-	}
-
-	for (int i = 0; i < line_length; i++) {
-		for (int t = 0; t < thickness; t++) {
-			int x = x_mid - (thickness / 2) + t;
-			int y = bottom_start_y + i;
-			if (x >= 0 && x < OLED_WIDTH && y >= 0 && y < OLED_HEIGHT) {
-				set_pixel_direct(buf, x, y);
-			}
-		}
-	}
-}
-
-static float get_animation_progress(int frame, int total_frames)
-{
-	float phase = (float)frame / (float)total_frames;
-	float sine_val = (1.0f - (float)cosf(phase * 6.28318f)) / 2.0f;
-	return sine_val;
-}
-
 static void render_mark_animation(uint8_t *buf, int frame)
 {
 	clear_screen(buf);
+	int width = 10 + (frame / 2);
+	int height = 18 + frame;
+	int x0 = (OLED_WIDTH - width) / 2;
+	int y0 = 5 + ((MARK_ANIM_FRAMES - frame) / 2);
+	int center_x = x0 + width / 2;
 
-	float anim_value = get_animation_progress(frame, MARK_ANIM_FRAMES);
-
-	int white_radius = MARK_WHITE_CIRCLE_STABLE_RADIUS +
-		(int)((MARK_WHITE_CIRCLE_MAX_RADIUS - MARK_WHITE_CIRCLE_STABLE_RADIUS) * anim_value);
-	draw_circle_mark(buf, white_radius, 1.0f);
-
-	int black_radius;
-	if (anim_value <= 0.5f) {
-		black_radius = (int)(MARK_BLACK_CIRCLE_MAX_RADIUS * (anim_value * 2.0f));
-	} else {
-		float contract = 1.0f - ((anim_value - 0.5f) * 2.0f);
-		black_radius = MARK_BLACK_CIRCLE_STABLE_RADIUS +
-			(int)((MARK_BLACK_CIRCLE_MAX_RADIUS - MARK_BLACK_CIRCLE_STABLE_RADIUS) * contract);
+	/* A filled bookmark with a clear V notch reads as a saved moment at
+	 * the Clip's small 88x48 resolution.
+	 */
+	for (int y = y0; y < y0 + height; y++) {
+		for (int x = x0; x < x0 + width; x++) {
+			int notch_distance = x - center_x;
+			if (notch_distance < 0) {
+				notch_distance = -notch_distance;
+			}
+			bool notch = y >= y0 + height - 5 &&
+				notch_distance <= (y - (y0 + height - 5));
+			if (!notch) {
+				set_pixel_direct(buf, x, y);
+			}
+		}
 	}
-	draw_black_circle(buf, black_radius, 1.0f);
-
-	int line_length = MARK_LINE_STABLE_LENGTH +
-		(int)((MARK_LINE_MAX_LENGTH - MARK_LINE_STABLE_LENGTH) * anim_value);
-	draw_vertical_lines(buf, white_radius, line_length, MARK_LINE_THICKNESS,
-			    MARK_LINE_OFFSET_FROM_WHITE);
+	draw_string_6x12(buf, "MARKED", (OLED_WIDTH - 6 * 6) / 2, 35);
 }
 
 /* Mark animation frame counter */
@@ -489,6 +423,7 @@ static void render_pause_icon(uint8_t *buf)
 			set_pixel_direct(buf, x, y);
 		}
 	}
+	draw_string_6x12(buf, "MIC OFF", (OLED_WIDTH - 7 * 6) / 2, 35);
 }
 
 /* =============================================================================
@@ -1345,11 +1280,11 @@ static void render_current_state(void)
 
 	case UI_STATE_MARKING: /* Bookmark animation */
 		if (g_mark_frame == 0) {
-			/* Play mark animation synchronously (10 frames @ 6ms = 60ms) */
+			/* Play the Cue bookmark animation synchronously (8 frames @ 30ms). */
 			for (int f = 0; f < MARK_ANIM_FRAMES; f++) {
 				render_mark_animation(display_buffer, f);
 				flush_display();
-				k_sleep(K_MSEC(6));
+				k_sleep(K_MSEC(30));
 			}
 			g_mark_frame = MARK_ANIM_FRAMES;
 			/* Transition back to recording */
